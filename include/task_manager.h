@@ -53,7 +53,7 @@ public:
 
     if (tasks.empty()) return;
 
-    uint32_t now_time = millis();
+    uint32_t now_time = micros();
     
     // Пока есть пропущенные или невыполненные задачи и не прозошло переполнение
     while (!tasks.empty() && (tasks.top().first < now_time || ((now_time - tasks.top().first) < (tasks.top().first - now_time)))) {
@@ -85,16 +85,25 @@ public:
 //    auto a = *executable_function_and_args.first;
 //    auto b = executable_function_and_args.second;
 //    a(b);
-    tasks.push(std::make_pair(timer_time_ms, executable_function_and_args));
+    tasks.push(std::make_pair(timer_time_ms*1000, executable_function_and_args));
   }
 
   void add_task(std::function<void()>* executable_function, uint32_t timer_time_ms){
 
-    std::function<void(void *)> lambda = [executable_function](void * arg) { (*executable_function)(); };
+    std::function<void(void *)> lambda = [executable_function](void * arg) { (*executable_function)();};
     std::function<void(void *)> *ulala = new std::function<void(void *)> (lambda);
     std::string *function_pointer = new std::string("");
     
-    tasks.push(std::make_pair(timer_time_ms, std::make_pair(ulala, function_pointer)));
+    tasks.push(std::make_pair(timer_time_ms*1000, std::make_pair(ulala, function_pointer)));
+  }
+
+  void add_task_microsecond(std::function<void()> executable_function, uint32_t timer_time_us){
+
+    std::function<void(void *)> lambda = [executable_function](void * arg) { executable_function(); };
+    std::function<void(void *)> *ulala = new std::function<void(void *)> (lambda);
+    std::string *function_pointer = new std::string("");
+    
+    tasks.push(std::make_pair(timer_time_us, std::make_pair(ulala, function_pointer)));
   }
 };
 

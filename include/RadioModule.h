@@ -1,7 +1,7 @@
 #ifndef RadioModule_h
 #define RadioModule_h
 #include "si4432.h"
-
+#include <string>
 
 class RadioModule {
     Si4432 *radio; // CS, SDN, IRQ
@@ -119,6 +119,48 @@ public:
         return 0; // TODO: Проверка получения req_guarant
     }
 
+    bool ssend(const std::string txMessage, const bool req_guarant = false) {
+        uint8_t iterations = (txMessage.length() + 61) / 62; // округляем вверх
+
+        for (uint8_t i = 0; i < iterations; ++i) {
+            uint8_t config = 0; // FIXME: настройка конфигурационных битов
+            if (iterations == 1)
+            { // Простое сообщение,      всего один пакет: 11000000
+                config = 0 | (3 << 6);
+            }
+            else if (i == 0)
+            { // Сообщение составное,        первый пакет: 10000000
+                config = 0 | (2 << 6);
+            }
+            else if (i < iterations - 1)
+            { // Сообщение составное, промежуточный пакет: 00000000
+                config = 0 | (0 << 6);
+            }
+            else if (i == iterations - 1)
+            { // Сообщение составное,     последний пакет: 01000000
+                config = 0 | (1 << 6);
+            }
+            else
+            {
+                // Ошибка
+            }
+            if (req_guarant)
+            { // Требуется подтверждение о доставке (важное сообщение)
+                config = config | (1 << 5);
+            }
+
+            message packet;
+            packet.config_bits = config;
+            memcpy(packet.message_byte, &(txMessage.c_str()[i * 62]), sizeof(uint8_t) * 62);
+            packet._CRC = 0;
+            calculate_CRC(packet);
+
+            bool sent = radio->sendPacket(64, packet.bytes);
+        }
+        radio->startListening();
+        return 0; // TODO: Проверка получения req_guarant
+    }
+
     bool srecv(uint16_t &text_len, char text[])
     {
         bool recv;
@@ -141,6 +183,41 @@ public:
             // std::copy(text[text_len], text[text_len + rxLen], packet.message_byte); // Копируем
             text_len += rxLen - 2;
             // not_last_massage = ((packet.config_bits<<1)>>7) == 0;
+            if ((packet.config_bits >> 6) == 2 ||
+                (packet.config_bits >> 6) == 0)
+            { // Сообщение не последнее
+                not_last_massage = true;
+            }
+            else
+            {
+                not_last_massage = false;
+            }
+            while (!radio->isPacketReceived() && not_last_massage)
+                ; // TODO: сделать тайм-аут изменяемым
+        }
+        return 0; // TODO: Проверка целостности
+    }
+
+    bool srecv(std::string &rxMessage)
+    {
+        bool recv;
+        uint8_t rxLen;
+        bool not_last_massage = true; // Переменная-индикатор является ли полученный пакет последним
+
+        uint16_t time_begin_recv = millis() % 1000;
+
+        while (not_last_massage)
+        { // Пока есть что получать и сообщение не последнее
+            message packet = {};
+
+            radio->getPacketReceived(&rxLen, packet.bytes); // Получаем сообщение
+
+            radio->startListening();
+            
+            char text[62];
+            memcpy(&text, &packet.message_byte, sizeof(uint8_t) * 62);
+            rxMessage+=text;
+
             if ((packet.config_bits >> 6) == 2 ||
                 (packet.config_bits >> 6) == 0)
             { // Сообщение не последнее
